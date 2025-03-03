@@ -1,0 +1,87 @@
+Parameters:
+  AllowedBucketPrefix:
+    Type: String
+    Default: "ai-pipeline-"
+    Description: Prefix for S3 buckets the developer can access
+Resources:
+  AIPipelineBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Boundary for AI Pipeline Developers with Conditional IAM
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # S3 Access for Data Retrieval
+          - Effect: Allow
+            Action:
+              - "s3:GetObject"
+              - "s3:PutObject"
+              - "s3:ListBucket"
+            Resource:
+              - !Sub "arn:aws:s3:::${AllowedBucketPrefix}*"
+              - !Sub "arn:aws:s3:::${AllowedBucketPrefix}*/*"
+          # Allowed AI Actions for building AI pipelines
+          - Effect: Allow
+            Action:
+              - "lambda:InvokeFunction"
+              - "lambda:GetFunction"
+              - "sagemaker:CreateTrainingJob"
+              - "sagemaker:DescribeTrainingJob"
+              - "sagemaker:CreateModel"
+              - "sagemaker:CreateEndpoint"
+              - "sagemaker:InvokeEndpoint"
+              - "bedrock:InvokeModel"            
+            Resource: "*"
+          # Conditional IAM Actions (Allow if Boundary Attached)
+          - Effect: Allow
+            Action:
+              - "iam:CreateRole"
+              - "iam:UpdateRole"
+              - "iam:DeleteRole"
+              - "iam:AttachRolePolicy"
+              - "iam:DetachRolePolicy"
+              - "iam:CreatePolicy"
+              - "iam:UpdatePolicy"
+              - "iam:DeletePolicy"            
+            Resource: "*"
+            Condition:
+              StringEquals:
+                "iam:PermissionsBoundary": !Ref AIPipelineBoundary
+          # Prevent Boundary Tampering
+          - Effect: Deny
+            Action:
+              - "iam:PutRolePermissionsBoundary"
+              - "iam:DeleteRolePermissionsBoundary"
+            Resource: "*"
+
+  DeveloperRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: AIPipelineDeveloperRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      PermissionsBoundary: !Ref AIPipelineBoundary
+      Policies:
+        - PolicyName: InlineDeveloperPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "s3:*"
+                  - "lambda:*"
+                  - "sagemaker:*"
+                  - "iam:*"
+                Resource: "*" # Boundary enforces limits
+Outputs:
+  BoundaryArn:
+    Value: !Ref AIPipelineBoundary
+    Description: ARN of the permissions boundary policy
+  RoleArn:
+    Value: !GetAtt DeveloperRole.Arn
+    Description: ARN of the sample developer role
